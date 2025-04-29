@@ -17,6 +17,7 @@
 #define ROOT_DIR "public_html"
 #define CERT_FILE "certs/cert.pem"
 #define KEY_FILE "certs/key.pem"
+#define HTTPS_LOG_FILE "logs/https_access.log"
 
 SSL_CTX *initialize_ssl_context() {
     SSL_library_init();
@@ -48,7 +49,7 @@ void send_file(SSL *ssl, const char *filepath) {
     }
 
     const char *mime = get_mime_type(filepath);
-    char header[256];
+    char header[512];
     snprintf(header, sizeof(header),
              "HTTP/1.1 200 OK\r\n"
              "Content-Type: %s\r\n"
@@ -60,6 +61,7 @@ void send_file(SSL *ssl, const char *filepath) {
     while ((bytes_read = fread(file_buffer, 1, BUFFER_SIZE, fp)) > 0) {
         SSL_write(ssl, file_buffer, bytes_read);
     }
+
     fclose(fp);
 }
 
@@ -116,6 +118,7 @@ int main() {
 
         char buffer[BUFFER_SIZE] = {0};
         ssize_t bytes_received = SSL_read(ssl, buffer, BUFFER_SIZE - 1);
+
         if (bytes_received <= 0) {
             SSL_shutdown(ssl);
             SSL_free(ssl);
@@ -123,9 +126,14 @@ int main() {
             continue;
         }
 
+        buffer[bytes_received] = '\0';  
+
         char method[8] = {0}, path[1024] = {0};
+
         if (sscanf(buffer, "%7s %1023s", method, path) != 2 ||
-            strcmp(method, "GET") != 0 || strstr(path, "..") != NULL) {
+            strncmp(method, "GET", 3) != 0 ||
+            strstr(path, "..") || strchr(path, '%') || strchr(path, '\\') ||
+            strlen(path) > 512 || strstr(buffer, " HTTP/") == NULL) {
             send_404_ssl(ssl);
             SSL_shutdown(ssl);
             SSL_free(ssl);
@@ -133,7 +141,7 @@ int main() {
             continue;
         }
 
-        log_request(inet_ntoa(client_addr.sin_addr), path);
+        log_request(HTTPS_LOG_FILE, inet_ntoa(client_addr.sin_addr), path);
 
         char full_path[2048];
         if (strcmp(path, "/") == 0) {

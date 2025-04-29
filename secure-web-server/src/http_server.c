@@ -13,6 +13,7 @@
 #define BUFFER_SIZE 2048
 #define BACKLOG 5
 #define ROOT_DIR "public_html"
+#define HTTP_LOG_FILE "logs/http_access.log"
 
 void send_file(int client_fd, const char *filepath) {
     FILE *fp = fopen(filepath, "r");
@@ -103,7 +104,7 @@ int main() {
             continue;
         }
 
-        log_request(inet_ntoa(client_addr.sin_addr), path);
+        log_request(HTTP_LOG_FILE, inet_ntoa(client_addr.sin_addr), path);
 
         char full_path[2048];
         if (strcmp(path, "/") == 0) {

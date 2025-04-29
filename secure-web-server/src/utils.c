@@ -5,13 +5,12 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 
 #ifdef USE_SSL
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #endif
-
-#define LOG_FILE "logs/http_access.log"
 
 const char* get_mime_type(const char *path) {
     const char *ext = strrchr(path, '.');
@@ -22,15 +21,21 @@ const char* get_mime_type(const char *path) {
     if (strcmp(ext, ".png") == 0) return "image/png";
     if (strcmp(ext, ".jpg") == 0 || strcmp(ext, ".jpeg") == 0) return "image/jpeg";
     if (strcmp(ext, ".gif") == 0) return "image/gif";
+    if (strcmp(ext, ".svg") == 0) return "image/svg+xml";
+    if (strcmp(ext, ".ico") == 0) return "image/x-icon";
+    if (strcmp(ext, ".json") == 0) return "application/json";
+    if (strcmp(ext, ".pdf") == 0) return "application/pdf";
+    if (strcmp(ext, ".txt") == 0) return "text/plain";
     return "application/octet-stream";
 }
 
-void log_request(const char *ip, const char *path) {
-    FILE *log = fopen(LOG_FILE, "a");
+void log_request(const char *logfile, const char *ip, const char *path) {
+    mkdir("logs", 0755);
+    FILE *log = fopen(logfile, "a");
     if (log) {
         time_t now = time(NULL);
         char *timestr = ctime(&now);
-        timestr[strlen(timestr) - 1] = '\0';  
+        timestr[strlen(timestr) - 1] = '\0';
         fprintf(log, "[%s] %s requested %s\n", timestr, ip, path);
         fclose(log);
     }
