@@ -105,6 +105,10 @@ int main() {
             perror("accept failed");
             continue;
         }
+        
+        struct timeval timeout = {5, 0};
+        setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
 
         SSL *ssl = SSL_new(ctx);
         SSL_set_fd(ssl, client_fd);
@@ -128,8 +132,8 @@ int main() {
 
         buffer[bytes_received] = '\0';  
 
-        char method[8] = {0}, path[1024] = {0};
-
+        char method[8] = {0};
+        char path[1024] = {0};
         if (sscanf(buffer, "%7s %1023s", method, path) != 2 ||
             strncmp(method, "GET", 3) != 0 ||
             strstr(path, "..") || strchr(path, '%') || strchr(path, '\\') ||
