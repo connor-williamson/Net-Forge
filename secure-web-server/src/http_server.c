@@ -7,7 +7,9 @@
 #include <netinet/in.h>
 #include <errno.h>
 #include <sys/time.h>
-#include "utils.h"
+#include "mime.h"
+#include "logger.h"
+#include "response.h"
 
 #define PORT 8080
 #define BUFFER_SIZE 2048
@@ -83,6 +85,7 @@ int main() {
         struct timeval timeout = {5, 0};
         setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
         setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+
         memset(buffer, 0, BUFFER_SIZE);
         ssize_t bytes_received = recv(client_fd, buffer, BUFFER_SIZE - 1, 0);
 
@@ -120,4 +123,3 @@ int main() {
     close(server_fd);
     return 0;
 }
-

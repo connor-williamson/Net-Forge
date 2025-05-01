@@ -9,7 +9,9 @@
 #include <sys/time.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#include "utils.h"
+#include "mime.h"
+#include "logger.h"
+#include "response.h"
 
 #define PORT 4433
 #define BUFFER_SIZE 2048
@@ -40,7 +42,7 @@ void configure_ssl_context(SSL_CTX *ctx) {
     }
 }
 
-void send_file(SSL *ssl, const char *filepath) {
+void send_file_ssl(SSL *ssl, const char *filepath) {
     FILE *fp = fopen(filepath, "r");
     if (!fp) {
         perror("fopen");
@@ -105,7 +107,7 @@ int main() {
             perror("accept failed");
             continue;
         }
-        
+
         struct timeval timeout = {5, 0};
         setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
         setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
@@ -130,7 +132,7 @@ int main() {
             continue;
         }
 
-        buffer[bytes_received] = '\0';  
+        buffer[bytes_received] = '\0';
 
         char method[8] = {0};
         char path[1024] = {0};
@@ -154,7 +156,7 @@ int main() {
             snprintf(full_path, sizeof(full_path), "%s%s", ROOT_DIR, path);
         }
 
-        send_file(ssl, full_path);
+        send_file_ssl(ssl, full_path);
 
         SSL_shutdown(ssl);
         SSL_free(ssl);
