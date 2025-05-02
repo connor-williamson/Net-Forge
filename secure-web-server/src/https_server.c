@@ -42,20 +42,25 @@ void configure_ssl_context(SSL_CTX *ctx) {
     }
 }
 
-void send_file_ssl(SSL *ssl, const char *filepath) {
+int send_file_ssl(SSL *ssl, const char *filepath, size_t *content_length) {
     FILE *fp = fopen(filepath, "r");
     if (!fp) {
         perror("fopen");
         send_404_ssl(ssl);
-        return;
+        return 0;
     }
+
+    fseek(fp, 0, SEEK_END);
+    *content_length = ftell(fp);
+    rewind(fp);
 
     const char *mime = get_mime_type(filepath);
     char header[512];
     snprintf(header, sizeof(header),
              "HTTP/1.1 200 OK\r\n"
              "Content-Type: %s\r\n"
-             "Connection: close\r\n\r\n", mime);
+             "Content-Length: %zu\r\n"
+             "Connection: close\r\n\r\n", mime, *content_length);
     SSL_write(ssl, header, strlen(header));
 
     char file_buffer[BUFFER_SIZE];
@@ -65,6 +70,27 @@ void send_file_ssl(SSL *ssl, const char *filepath) {
     }
 
     fclose(fp);
+    return 1;
+}
+
+char *extract_user_agent(const char *buffer) {
+    const char *ua_start = strstr(buffer, "User-Agent:");
+    if (!ua_start) return NULL;
+
+    ua_start += strlen("User-Agent:");
+    while (*ua_start == ' ') ua_start++;
+    const char *ua_end = strstr(ua_start, "\r\n");
+    if (!ua_end) return NULL;
+
+    size_t len = ua_end - ua_start;
+    char *user_agent = malloc(len + 1);
+    strncpy(user_agent, ua_start, len);
+    user_agent[len] = '\0';
+    return user_agent;
+}
+
+long get_time_diff_ms(struct timeval start, struct timeval end) {
+    return (end.tv_sec - start.tv_sec) * 1000L + (end.tv_usec - start.tv_usec) / 1000L;
 }
 
 int main() {
@@ -108,9 +134,8 @@ int main() {
             continue;
         }
 
-        struct timeval timeout = {5, 0};
-        setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-        setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+        struct timeval start, end;
+        gettimeofday(&start, NULL);
 
         SSL *ssl = SSL_new(ctx);
         SSL_set_fd(ssl, client_fd);
@@ -124,7 +149,6 @@ int main() {
 
         char buffer[BUFFER_SIZE] = {0};
         ssize_t bytes_received = SSL_read(ssl, buffer, BUFFER_SIZE - 1);
-
         if (bytes_received <= 0) {
             SSL_shutdown(ssl);
             SSL_free(ssl);
@@ -136,18 +160,21 @@ int main() {
 
         char method[8] = {0};
         char path[1024] = {0};
+        char *user_agent = extract_user_agent(buffer);
+
         if (sscanf(buffer, "%7s %1023s", method, path) != 2 ||
             strncmp(method, "GET", 3) != 0 ||
             strstr(path, "..") || strchr(path, '%') || strchr(path, '\\') ||
             strlen(path) > 512 || strstr(buffer, " HTTP/") == NULL) {
             send_404_ssl(ssl);
+            gettimeofday(&end, NULL);
+            log_request(HTTPS_LOG_FILE, inet_ntoa(client_addr.sin_addr), path, 404, get_time_diff_ms(start, end), user_agent);
+            free(user_agent);
             SSL_shutdown(ssl);
             SSL_free(ssl);
             close(client_fd);
             continue;
         }
-
-        log_request(HTTPS_LOG_FILE, inet_ntoa(client_addr.sin_addr), path);
 
         char full_path[2048];
         if (strcmp(path, "/") == 0) {
@@ -156,7 +183,12 @@ int main() {
             snprintf(full_path, sizeof(full_path), "%s%s", ROOT_DIR, path);
         }
 
-        send_file_ssl(ssl, full_path);
+        size_t content_length = 0;
+        int status = send_file_ssl(ssl, full_path, &content_length) ? 200 : 404;
+
+        gettimeofday(&end, NULL);
+        log_request(HTTPS_LOG_FILE, inet_ntoa(client_addr.sin_addr), path, status, get_time_diff_ms(start, end), user_agent);
+        free(user_agent);
 
         SSL_shutdown(ssl);
         SSL_free(ssl);

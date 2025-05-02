@@ -53,7 +53,6 @@ $(HTTPS_BIN): $(HTTPS_OBJ) $(MIME_OBJ) $(LOGGER_OBJ) $(RESPONSE_OBJ_HTTPS)
 # If you see 'Permission denied', run:
 # sudo rm -f logs/*.log && sudo chown -R $(whoami) logs && chmod -R u+rw logs
 # This ensures you can write to logs during testing.
-
 test: $(HTTP_BIN) $(HTTPS_BIN)
 	@printf "Running HTTP test script...\n\n"
 	@bash $(TESTDIR)/test_http.sh

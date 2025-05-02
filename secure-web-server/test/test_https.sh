@@ -21,7 +21,7 @@ trap cleanup EXIT
 
 function request_ssl() {
     local PATH_REQUEST=$1
-    echo -e "GET $PATH_REQUEST HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" | \
+    echo -e "GET $PATH_REQUEST HTTP/1.1\r\nHost: localhost\r\nUser-Agent: TestClient/1.0\r\nConnection: close\r\n\r\n" | \
     openssl s_client -connect localhost:$PORT -quiet 2>/dev/null
 }
 
