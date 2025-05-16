@@ -14,6 +14,7 @@ TESTDIR = test
 # Source files
 HTTP_SRC = $(SRCDIR)/http_server.c
 HTTPS_SRC = $(SRCDIR)/https_server.c
+QUEUE_SRC = $(SRCDIR)/queue.c
 MIME_SRC = $(SRCDIR)/mime.c
 LOGGER_SRC = $(SRCDIR)/logger.c
 RESPONSE_SRC = $(SRCDIR)/response.c
@@ -21,6 +22,7 @@ RESPONSE_SRC = $(SRCDIR)/response.c
 # Object files
 HTTP_OBJ = $(OBJDIR)/http_server.o
 HTTPS_OBJ = $(OBJDIR)/https_server.o
+QUEUE_OBJ = $(OBJDIR)/queue.o
 MIME_OBJ = $(OBJDIR)/mime.o
 LOGGER_OBJ = $(OBJDIR)/logger.o
 RESPONSE_OBJ_HTTP = $(OBJDIR)/response.o
@@ -42,7 +44,7 @@ $(RESPONSE_OBJ_HTTPS): $(RESPONSE_SRC)
 	$(CC) $(CFLAGS) -DUSE_SSL -c $< -o $@
 
 # Binaries
-$(HTTP_BIN): $(HTTP_OBJ) $(MIME_OBJ) $(LOGGER_OBJ) $(RESPONSE_OBJ_HTTP)
+$(HTTP_BIN): $(HTTP_OBJ) $(QUEUE_OBJ) $(MIME_OBJ) $(LOGGER_OBJ) $(RESPONSE_OBJ_HTTP)
 	$(CC) $(CFLAGS) -o $@ $^
 
 $(HTTPS_BIN): $(HTTPS_OBJ) $(MIME_OBJ) $(LOGGER_OBJ) $(RESPONSE_OBJ_HTTPS)
@@ -53,14 +55,24 @@ $(HTTPS_BIN): $(HTTPS_OBJ) $(MIME_OBJ) $(LOGGER_OBJ) $(RESPONSE_OBJ_HTTPS)
 # If you see 'Permission denied', run:
 # sudo rm -f logs/*.log && sudo chown -R $(whoami) logs && chmod -R u+rw logs
 # This ensures you can write to logs during testing.
-test: $(HTTP_BIN) $(HTTPS_BIN)
-	@printf "Running HTTP test script...\n\n"
-	@bash $(TESTDIR)/test_http.sh
-	@printf "\nRunning HTTPS test script...\n\n"
-	@bash $(TESTDIR)/test_https.sh
 
+# WIP
+# test: $(HTTP_BIN) $(HTTPS_BIN)
+# @printf "\nRunning HTTP test script...\n\n"
+# @bash $(TESTDIR)/test_http.sh
+# @printf "\nRunning HTTPS test script...\n\n"
+# @bash $(TESTDIR)/test_https.sh
+
+test-stress: $(HTTP_BIN)
+	@printf "\nRunning HTTP stress test (100 concurrent requests)...\n\n"
+	@bash $(TESTDIR)/test_http_stress.sh
+
+# WIP
+test-threads: $(HTTP_BIN)
+	@printf "\nRunning multithreading HTTP test...\n\n"
+	@bash $(TESTDIR)/test_http_thread.sh
 
 clean:
 	rm -f $(OBJDIR)/*.o $(HTTP_BIN) $(HTTPS_BIN)
 
-.PHONY: all clean test
+.PHONY: all clean test test-stress test-threads
