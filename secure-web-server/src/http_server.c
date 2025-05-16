@@ -65,60 +65,52 @@ void handle_client(int client_fd) {
     setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     char buffer[BUFFER_SIZE];
     ssize_t bytes_received;
-    if (shutdown_requested) {
-        close(client_fd);
-        return;
-    }
-    while ((bytes_received = recv(client_fd, buffer, BUFFER_SIZE - 1, 0)) > 0) {
-        buffer[bytes_received] = '\0';
-        char *user_agent = extract_user_agent(buffer);
-        char *request = strtok(buffer, "\r\n\r\n");
-        while (request != NULL) {
-            if (strncmp(request, "Host:", 5) == 0 ||
-                strncmp(request, "User-Agent:", 11) == 0 ||
-                strncmp(request, "Accept:", 7) == 0 ||
-                strncmp(request, "Connection:", 11) == 0 ||
-                strlen(request) == 0) {
-                request = strtok(NULL, "\r\n\r\n");
-                continue;
+    int keep_alive = 1;
+    while (!shutdown_requested && keep_alive) {
+        memset(buffer, 0, sizeof(buffer));
+        bytes_received = recv(client_fd, buffer, BUFFER_SIZE - 1, 0);
+        if (bytes_received <= 0) {
+            if (errno == EWOULDBLOCK || errno == EAGAIN) {
+                printf("Client recv() timed out.\n");
             }
-            struct timeval start, end;
-            gettimeofday(&start, NULL);
-            char method[8] = {0};
-            char path[1024] = {0};
-            if (sscanf(request, "%7s %1023s", method, path) != 2 ||
-                strcmp(method, "GET") != 0 ||
-                strstr(path, "..") || strchr(path, '%') || strchr(path, '\\') ||
-                strlen(path) > 512 || strstr(request, " HTTP/") == NULL) {
-                send_404_tcp(client_fd, 1);
-                gettimeofday(&end, NULL);
-                pthread_mutex_lock(&log_mutex);
-                log_request(HTTP_LOG_FILE, inet_ntoa(client_addr.sin_addr), path, 404,
-                            get_time_diff_ms(start, end), user_agent);
-                pthread_mutex_unlock(&log_mutex);
-                request = strtok(NULL, "\r\n\r\n");
-                continue;
-            }
-            char full_path[2048];
-            if (strcmp(path, "/") == 0) {
-                snprintf(full_path, sizeof(full_path), "%s/index.html", ROOT_DIR);
-            } else {
-                snprintf(full_path, sizeof(full_path), "%s%s", ROOT_DIR, path);
-            }
-            size_t content_length = 0;
-            int status = send_file(client_fd, full_path, &content_length) ? 200 : 404;
-            gettimeofday(&end, NULL);
-            pthread_mutex_lock(&log_mutex);
-            log_request(HTTP_LOG_FILE, inet_ntoa(client_addr.sin_addr), path, status,
-                        get_time_diff_ms(start, end), user_agent);
-            pthread_mutex_unlock(&log_mutex);
-            request = strtok(NULL, "\r\n\r\n");
+            break;
         }
-        free(user_agent);
-        if (shutdown_requested) break;
-    }
-    if (bytes_received < 0 && (errno == EWOULDBLOCK || errno == EAGAIN)) {
-        printf("Client recv() timed out.\n");
+        buffer[bytes_received] = '\0';
+        if (!strstr(buffer, "\r\n\r\n")) {
+            continue;
+        }
+        keep_alive = strstr(buffer, "Connection: close") == NULL;
+        char *user_agent = extract_user_agent(buffer);
+        char method[8] = {0};
+        char path[1024] = {0};
+        if (sscanf(buffer, "%7s %1023s", method, path) != 2 ||
+            strcmp(method, "GET") != 0 ||
+            strstr(path, "..") || strchr(path, '%') || strchr(path, '\\') ||
+            strlen(path) > 512 || !strstr(buffer, " HTTP/")) {
+            send_404_tcp(client_fd, keep_alive);
+            pthread_mutex_lock(&log_mutex);
+            log_request(HTTP_LOG_FILE, inet_ntoa(client_addr.sin_addr), path, 404, 0, user_agent);
+            pthread_mutex_unlock(&log_mutex);
+            if (user_agent) free(user_agent);
+            if (!keep_alive) break;
+            continue;
+        }
+        char full_path[2048];
+        if (strcmp(path, "/") == 0)
+            snprintf(full_path, sizeof(full_path), "%s/index.html", ROOT_DIR);
+        else
+            snprintf(full_path, sizeof(full_path), "%s%s", ROOT_DIR, path);
+        struct timeval start, end;
+        gettimeofday(&start, NULL);
+        size_t content_length = 0;
+        int status = send_file(client_fd, full_path, &content_length, keep_alive) ? 200 : 404;
+        gettimeofday(&end, NULL);
+        pthread_mutex_lock(&log_mutex);
+        log_request(HTTP_LOG_FILE, inet_ntoa(client_addr.sin_addr), path, status,
+                    get_time_diff_ms(start, end), user_agent);
+        pthread_mutex_unlock(&log_mutex);
+        if (user_agent) free(user_agent);
+        if (!keep_alive) break;
     }
     close(client_fd);
     printf("Thread done with connection.\n");
